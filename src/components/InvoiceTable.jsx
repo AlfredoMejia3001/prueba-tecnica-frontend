@@ -1,32 +1,119 @@
-import React, { useMemo, useCallback, useState, useEffect } from 'react';
+import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { useInvoiceStore } from '../stores/invoiceStore.js';
 import { InvoiceStatus } from '../types/invoice.js';
+import CloseButton from './CloseButton.jsx';
+import InvoiceSidebar from './InvoiceSidebar.jsx';
 
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-const InvoiceTable = () => {
+// Optimized cell renderers as separate components
+const DateCellRenderer = React.memo(({ value }) => {
+  if (!value) return '';
+  return new Date(value).toLocaleDateString('es-ES');
+});
+
+const AmountCellRenderer = React.memo(({ value }) => {
+  return `$${parseFloat(value || 0).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}`;
+});
+
+const StatusCellRenderer = React.memo(({ value }) => {
+  const statusMap = {
+    [InvoiceStatus.PAID]: {
+      label: 'Pagada',
+      className: 'bg-green-100 text-green-800 border-green-200',
+      icon: (
+        <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      )
+    },
+    [InvoiceStatus.PENDING]: {
+      label: 'Pendiente',
+      className: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      icon: (
+        <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" />
+        </svg>
+      )
+    },
+  };
+  
+  const statusObj = statusMap[value] || {
+    label: value,
+    className: 'bg-gray-100 text-gray-800 border-gray-200',
+    icon: null
+  };
+  
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusObj.className}`}>
+      {statusObj.icon}
+      {statusObj.label}
+    </span>
+  );
+});
+
+const ActionsCellRenderer = React.memo(({ data, onView, onPay, payingInvoiceId }) => {
+  return (
+    <div className="flex gap-2">
+      <button
+        className="px-3 py-1 rounded bg-blue-500 text-white text-xs font-semibold hover:bg-blue-600 transition-all duration-200 hover:scale-105"
+        onClick={() => onView(data)}
+        type="button"
+      >
+        Ver
+      </button>
+      {data.status === InvoiceStatus.PENDING && (
+        <button
+          className={`px-3 py-1 rounded text-white text-xs font-semibold transition-all duration-300 ${
+            payingInvoiceId === data.id 
+              ? 'bg-yellow-500 cursor-wait animate-pulse' 
+              : 'bg-green-500 hover:bg-green-600 hover:scale-105'
+          }`}
+          onClick={() => onPay(data)}
+          type="button"
+          disabled={payingInvoiceId === data.id}
+        >
+          {payingInvoiceId === data.id ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-1 h-3 w-3 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Pagando...
+            </>
+          ) : 'Pagar'}
+        </button>
+      )}
+    </div>
+  );
+});
+
+// Main component with React.memo for performance
+const InvoiceTable = React.memo(() => {
   const { filteredInvoices, updateInvoice } = useInvoiceStore();
   const [isMobile, setIsMobile] = useState(false);
-
-  // No need for local state anymore - using global store
-
-  // Modal
   const [modalInvoice, setModalInvoice] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [payingInvoiceId, setPayingInvoiceId] = useState(null);
+  
+  // Grid API reference for optimizations
+  const gridRef = useRef(null);
 
-  const handleView = (invoice) => {
+  // Optimized event handlers with useCallback
+  const handleView = useCallback((invoice) => {
     setModalInvoice(invoice);
     setShowModal(true);
-  };
+  }, []);
 
-  const [payingInvoiceId, setPayingInvoiceId] = useState(null);
-
-  const handlePay = (invoice) => {
+  const handlePay = useCallback((invoice) => {
     setPayingInvoiceId(invoice.id);
     
     // Add visual feedback
@@ -40,102 +127,97 @@ const InvoiceTable = () => {
       });
       window.dispatchEvent(event);
     }, 600);
-  };
+  }, [updateInvoice]);
 
-  const closeModal = () => {
+  const closeModal = useCallback(() => {
     setShowModal(false);
     setModalInvoice(null);
-  };
+  }, []);
 
-
-  // Check if device is mobile
+  // Optimized mobile detection with debouncing
   useEffect(() => {
+    let timeoutId;
     const checkIsMobile = () => {
       setIsMobile(window.innerWidth < 768);
     };
     
-    checkIsMobile();
-    window.addEventListener('resize', checkIsMobile);
+    const debouncedCheck = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(checkIsMobile, 100);
+    };
     
-    return () => window.removeEventListener('resize', checkIsMobile);
+    checkIsMobile();
+    window.addEventListener('resize', debouncedCheck);
+    
+    return () => {
+      window.removeEventListener('resize', debouncedCheck);
+      clearTimeout(timeoutId);
+    };
   }, []);
 
-  // Column definitions for AG Grid
-  // handlers ya definidos arriba (no duplicar)
+  // Optimized column definitions with memoization
   const columnDefs = useMemo(() => [
     {
       field: 'invoiceNumber',
       headerName: 'Número de Factura',
       width: 180,
       pinned: 'left',
-      cellClass: 'font-medium text-blue-600'
+      cellClass: 'font-medium text-blue-600',
+      sortable: true,
+      filter: true,
+      suppressMenu: false,
+      menuTabs: ['filterMenuTab', 'generalMenuTab', 'columnsMenuTab']
     },
     {
       field: 'customerName',
       headerName: 'Nombre del Cliente',
       width: 250,
-      flex: 1
+      flex: 1,
+      sortable: true,
+      filter: true,
+      suppressMenu: false,
+      menuTabs: ['filterMenuTab', 'generalMenuTab', 'columnsMenuTab']
     },
     {
       field: 'date',
       headerName: 'Fecha',
       width: 120,
-      cellRenderer: (params) => {
-        if (!params.value) return '';
-        return new Date(params.value).toLocaleDateString('es-ES');
-      },
-      comparator: (valueA, valueB) => {
-        return new Date(valueA) - new Date(valueB);
+      cellRenderer: DateCellRenderer,
+      comparator: (valueA, valueB) => new Date(valueA) - new Date(valueB),
+      sortable: true,
+      filter: 'agDateColumnFilter',
+      filterParams: {
+        comparator: (filterLocalDateAtMidnight, cellValue) => {
+          const cellDate = new Date(cellValue);
+          const filterDate = new Date(filterLocalDateAtMidnight);
+          return cellDate.getTime() - filterDate.getTime();
+        }
       }
     },
     {
       field: 'status',
       headerName: 'Estado',
       width: 130,
-      cellRenderer: (params) => {
-        const status = params.value;
-        const statusMap = {
-          [InvoiceStatus.PAID]: {
-            label: 'Pagada',
-            className: 'bg-green-100 text-green-800 border-green-200',
-            icon: (
-              <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-            )
-          },
-          [InvoiceStatus.PENDING]: {
-            label: 'Pendiente',
-            className: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-            icon: (
-              <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" /></svg>
-            )
-          },
-        };
-        const statusObj = statusMap[status] || {
-          label: status,
-          className: 'bg-gray-100 text-gray-800 border-gray-200',
-          icon: null
-        };
-        return (
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusObj.className}`}>
-            {statusObj.icon}
-            {statusObj.label}
-          </span>
-        );
+      cellRenderer: StatusCellRenderer,
+      sortable: true,
+      filter: true,
+      filterParams: {
+        filterOptions: ['equals', 'notEqual'],
+        defaultOption: 'equals'
       }
     },
     {
       field: 'amount',
       headerName: 'Monto (USD)',
       width: 140,
-      cellRenderer: (params) => {
-        return `$${parseFloat(params.value || 0).toLocaleString('en-US', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2
-        })}`;
-      },
+      cellRenderer: AmountCellRenderer,
       cellClass: 'text-right font-medium',
-      comparator: (valueA, valueB) => {
-        return parseFloat(valueA || 0) - parseFloat(valueB || 0);
+      comparator: (valueA, valueB) => parseFloat(valueA || 0) - parseFloat(valueB || 0),
+      sortable: true,
+      filter: 'agNumberColumnFilter',
+      filterParams: {
+        filterOptions: ['equals', 'lessThan', 'greaterThan', 'inRange'],
+        defaultOption: 'equals'
       }
     },
     {
@@ -143,77 +225,112 @@ const InvoiceTable = () => {
       field: 'actions',
       width: 180,
       pinned: 'right',
-      cellRenderer: (params) => {
-        const invoice = params.data;
-        return (
-          <div className="flex gap-2">
-            <button
-              className="px-3 py-1 rounded bg-blue-500 text-white text-xs font-semibold hover:bg-blue-600 transition-all duration-200 hover:scale-105"
-              onClick={() => handleView(invoice)}
-              type="button"
-            >
-              Ver
-            </button>
-            {invoice.status === InvoiceStatus.PENDING && (
-              <button
-                className={`px-3 py-1 rounded text-white text-xs font-semibold transition-all duration-300 ${
-                  payingInvoiceId === invoice.id 
-                    ? 'bg-yellow-500 cursor-wait animate-pulse' 
-                    : 'bg-green-500 hover:bg-green-600 hover:scale-105'
-                }`}
-                onClick={() => handlePay(invoice)}
-                type="button"
-                disabled={payingInvoiceId === invoice.id}
-              >
-                {payingInvoiceId === invoice.id ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-1 h-3 w-3 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Pagando...
-                  </>
-                ) : 'Pagar'}
-              </button>
-            )}
-          </div>
-        );
+      cellRenderer: ActionsCellRenderer,
+      cellRendererParams: {
+        onView: handleView,
+        onPay: handlePay,
+        payingInvoiceId
       },
       cellClass: 'text-center',
       sortable: false,
-      resizable: false,
+      filter: false,
+      suppressMenu: true,
+      resizable: false
     }
-  ], []);
+  ], [handleView, handlePay, payingInvoiceId]);
 
-  // Default column properties
+  // Optimized default column properties
   const defaultColDef = useMemo(() => ({
     sortable: true,
     resizable: true,
-    minWidth: 100
+    minWidth: 100,
+    suppressMenu: false,
+    menuTabs: ['filterMenuTab', 'generalMenuTab', 'columnsMenuTab'],
+    floatingFilter: false,
+    suppressMovable: false,
+    lockPosition: false,
+    suppressKeyboardEvent: (params) => {
+      // Allow keyboard navigation
+      return false;
+    }
   }), []);
 
-  // Grid options
+  // Optimized grid options for performance
   const gridOptions = useMemo(() => ({
+    // Performance optimizations
+    rowBuffer: 10,
+    suppressAnimationFrame: false,
+    suppressBrowserResizeObserver: false,
+    suppressColumnVirtualisation: false,
+    suppressRowVirtualisation: false,
+    
+    // Selection and interaction
     rowSelection: 'single',
     suppressRowClickSelection: false,
+    suppressCellFocus: false,
+    
+    // Row configuration
     rowHeight: 50,
     headerHeight: 50,
     animateRows: true,
+    
+    // Pagination
     pagination: true,
     paginationPageSize: 20,
     paginationPageSizeSelector: [10, 20, 50, 100],
+    paginationAutoPageSize: false,
+    
+    // Text selection and menus
     enableCellTextSelection: true,
-    suppressMenuHide: true
+    suppressMenuHide: false,
+    allowContextMenuWithControlKey: true,
+    
+    // Performance settings
+    suppressRowTransform: false,
+    suppressColumnMoveAnimation: false,
+    suppressRowHoverHighlight: false,
+    
+    // Accessibility
+    enableRangeSelection: false,
+    suppressCopyRowsToClipboard: true,
+    suppressCopySingleCellRanges: false,
+    
+    // Event handlers
+    onGridReady: (params) => {
+      params.api.sizeColumnsToFit();
+      gridRef.current = params.api;
+    },
+    onFirstDataRendered: (params) => {
+      params.api.sizeColumnsToFit();
+    },
+    onColumnResized: (params) => {
+      // Auto-fit columns when resized
+      if (params.finished) {
+        params.api.sizeColumnsToFit();
+      }
+    }
   }), []);
 
-  // Handle row selection
+  // Optimized event handlers
   const onSelectionChanged = useCallback((event) => {
     const selectedRows = event.api.getSelectedRows();
-    console.log('Selected invoice:', selectedRows[0]);
+    if (selectedRows.length > 0) {
+      console.log('Selected invoice:', selectedRows[0]);
+    }
   }, []);
 
-  // Mobile card view component
-  const MobileInvoiceCards = () => (
+  const onFilterChanged = useCallback((event) => {
+    const filteredRowCount = event.api.getDisplayedRowCount();
+    console.log(`Filtered to ${filteredRowCount} rows`);
+  }, []);
+
+  const onSortChanged = useCallback((event) => {
+    const sortModel = event.api.getSortModel();
+    console.log('Sort changed:', sortModel);
+  }, []);
+
+  // Optimized mobile card component
+  const MobileInvoiceCards = useMemo(() => (
     <div className="space-y-4">
       {filteredInvoices.map((invoice) => (
         <div key={invoice.id} className="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
@@ -226,21 +343,7 @@ const InvoiceTable = () => {
                 {invoice.customerName}
               </p>
             </div>
-            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-              invoice.status === InvoiceStatus.PAID
-                ? 'bg-green-100 text-green-800 border-green-200'
-                : invoice.status === InvoiceStatus.PENDING
-                  ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
-                  : 'bg-gray-100 text-gray-800 border-gray-200'
-            }`}>
-              {invoice.status === InvoiceStatus.PAID && (
-                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-              )}
-              {invoice.status === InvoiceStatus.PENDING && (
-                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" /></svg>
-              )}
-              {invoice.status === InvoiceStatus.PAID ? 'Pagada' : invoice.status === InvoiceStatus.PENDING ? 'Pendiente' : invoice.status}
-            </span>
+            <StatusCellRenderer value={invoice.status} />
           </div>
           
           <div className="flex justify-between items-center text-sm">
@@ -252,72 +355,31 @@ const InvoiceTable = () => {
             </div>
           </div>
           <div className="flex gap-2 mt-3">
-            <button
-              className="px-3 py-1 rounded bg-blue-500 text-white text-xs font-semibold hover:bg-blue-600 transition-all duration-200 hover:scale-105"
-              onClick={() => handleView(invoice)}
-              type="button"
-            >
-              Ver
-            </button>
-            {invoice.status === InvoiceStatus.PENDING && (
-              <button
-                className={`px-3 py-1 rounded text-white text-xs font-semibold transition-all duration-300 ${
-                  payingInvoiceId === invoice.id 
-                    ? 'bg-yellow-500 cursor-wait animate-pulse' 
-                    : 'bg-green-500 hover:bg-green-600 hover:scale-105'
-                }`}
-                onClick={() => handlePay(invoice)}
-                type="button"
-                disabled={payingInvoiceId === invoice.id}
-              >
-                {payingInvoiceId === invoice.id ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-1 h-3 w-3 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Pagando...
-                  </>
-                ) : 'Pagar'}
-              </button>
-            )}
+            <ActionsCellRenderer 
+              data={invoice} 
+              onView={handleView} 
+              onPay={handlePay} 
+              payingInvoiceId={payingInvoiceId} 
+            />
           </div>
         </div>
       ))}
     </div>
-  );
+  ), [filteredInvoices, handleView, handlePay, payingInvoiceId]);
 
-  // Status cell renderer
-  const StatusCellRenderer = (params) => {
-    const status = params.value;
-    const statusMap = {
-      [InvoiceStatus.PAID]: {
-        label: 'Pagada',
-        className: 'bg-green-100 text-green-800 border-green-200',
-        icon: (
-          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-        )
-      },
-      [InvoiceStatus.PENDING]: {
-        label: 'Pendiente',
-        className: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-        icon: (
-          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" /></svg>
-        )
-      },
+  // Optimized statistics calculation
+  const statistics = useMemo(() => {
+    const paidCount = filteredInvoices.filter(invoice => invoice.status === InvoiceStatus.PAID).length;
+    const pendingCount = filteredInvoices.filter(invoice => invoice.status === InvoiceStatus.PENDING).length;
+    const totalAmount = filteredInvoices.reduce((sum, invoice) => sum + invoice.amount, 0);
+    
+    return {
+      total: filteredInvoices.length,
+      paid: paidCount,
+      pending: pendingCount,
+      totalAmount
     };
-    const statusObj = statusMap[status] || {
-      label: status,
-      className: 'bg-gray-100 text-gray-800 border-gray-200',
-      icon: null
-    };
-    return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusObj.className}`}>
-        {statusObj.icon}
-        {statusObj.label}
-      </span>
-    );
-  };
+  }, [filteredInvoices]);
 
   return (
     <div className="w-full h-full">
@@ -328,11 +390,10 @@ const InvoiceTable = () => {
             Lista de Facturas
           </h3>
           <p className="text-sm text-gray-600">
-            {filteredInvoices.length} facturas encontradas
+            {statistics.total} facturas encontradas
           </p>
         </div>
         
-        {/* View toggle for debugging (optional) */}
         <div className="text-xs text-gray-500 md:hidden">
           📱 Vista móvil
         </div>
@@ -342,67 +403,70 @@ const InvoiceTable = () => {
       <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-4 bg-gray-50 p-4 rounded-lg">
         <div className="text-center">
           <div className="font-semibold text-gray-900">Total Facturas</div>
-          <div className="text-gray-600">{filteredInvoices.length}</div>
+          <div className="text-gray-600">{statistics.total}</div>
         </div>
         <div className="text-center">
           <div className="font-semibold text-green-600">Pagadas</div>
-          <div className="text-gray-600">
-            {filteredInvoices.filter(invoice => invoice.status === InvoiceStatus.PAID).length}
-          </div>
+          <div className="text-gray-600">{statistics.paid}</div>
         </div>
         <div className="text-center">
           <div className="font-semibold text-yellow-600">Pendientes</div>
-          <div className="text-gray-600">
-            {filteredInvoices.filter(invoice => invoice.status === InvoiceStatus.PENDING).length}
-          </div>
+          <div className="text-gray-600">{statistics.pending}</div>
         </div>
         <div className="text-center">
           <div className="font-semibold text-blue-600">Monto Total</div>
           <div className="text-gray-600">
-            ${filteredInvoices.reduce((sum, invoice) => sum + invoice.amount, 0)
-              .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            ${statistics.totalAmount.toLocaleString('en-US', { 
+              minimumFractionDigits: 2, 
+              maximumFractionDigits: 2 
+            })}
           </div>
         </div>
       </div>
 
       {/* Table Content */}
       {isMobile ? (
-        <MobileInvoiceCards />
+        MobileInvoiceCards
       ) : (
         <div className="ag-theme-alpine w-full h-96">
           <AgGridReact
+            ref={gridRef}
             rowData={filteredInvoices}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             gridOptions={gridOptions}
             onSelectionChanged={onSelectionChanged}
+            onFilterChanged={onFilterChanged}
+            onSortChanged={onSortChanged}
             domLayout="normal"
+            suppressRowClickSelection={false}
+            enableCellTextSelection={true}
+            suppressCopyRowsToClipboard={true}
+            suppressCopySingleCellRanges={false}
+            allowContextMenuWithControlKey={true}
+            suppressMenuHide={false}
+            suppressRowHoverHighlight={false}
+            suppressColumnMoveAnimation={false}
+            suppressRowTransform={false}
+            suppressColumnVirtualisation={false}
+            suppressRowVirtualisation={false}
+            suppressBrowserResizeObserver={false}
+            suppressAnimationFrame={false}
+            rowBuffer={10}
           />
         </div>
       )}
 
-      {/* Modal para vista previa de factura */}
-      {showModal && modalInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-10 animate-fade-in" onClick={closeModal}>
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 relative animate-modal-enter transform transition-all duration-300" onClick={(e) => e.stopPropagation()}>
-            <button
-              className="absolute top-2 right-2 text-gray-400 hover:text-gray-700 text-xl font-bold"
-              onClick={closeModal}
-              aria-label="Cerrar"
-            >
-              ×
-            </button>
-            <h2 className="text-lg font-semibold mb-4 text-blue-700">Vista previa de factura</h2>
-            <div className="mb-2"><span className="font-semibold">Número:</span> {modalInvoice.invoiceNumber}</div>
-            <div className="mb-2"><span className="font-semibold">Cliente:</span> {modalInvoice.customerName}</div>
-            <div className="mb-2"><span className="font-semibold">Fecha:</span> {new Date(modalInvoice.date).toLocaleDateString('es-ES')}</div>
-            <div className="mb-2"><span className="font-semibold">Monto:</span> ${modalInvoice.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-            <div className="mb-2"><span className="font-semibold">Estado:</span> {modalInvoice.status === InvoiceStatus.PAID ? 'Pagada' : modalInvoice.status === InvoiceStatus.PENDING ? 'Pendiente' : modalInvoice.status}</div>
-          </div>
-        </div>
-      )}
+      {/* Sidebar para vista previa de factura */}
+      <InvoiceSidebar
+        invoice={modalInvoice}
+        isOpen={showModal}
+        onClose={closeModal}
+        onPay={handlePay}
+        payingInvoiceId={payingInvoiceId}
+      />
     </div>
   );
-}
+});
 
 export default InvoiceTable;

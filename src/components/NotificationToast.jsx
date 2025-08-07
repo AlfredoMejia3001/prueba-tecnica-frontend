@@ -41,15 +41,7 @@ const NotificationToast = ({ message, type, duration = 3000, onClose }) => {
         <div className="flex-1">
           <p className="text-sm font-medium">{message}</p>
         </div>
-        <button
-          onClick={() => {
-            setIsVisible(false);
-            setTimeout(() => onClose && onClose(), 300);
-          }}
-          className="ml-2 text-lg leading-none opacity-70 hover:opacity-100"
-        >
-          ×
-        </button>
+        {/* Removed close button (X) */}
       </div>
     </div>
   );

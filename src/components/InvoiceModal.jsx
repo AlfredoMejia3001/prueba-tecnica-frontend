@@ -225,7 +225,7 @@ const InvoiceModal = () => {
                 onClick={closeModal}
                 disabled={isSubmitting}
               >
-                <CIcon icon={cilX} size="sm" className="me-1" />
+                <span className="me-1">✕</span>
                 Cancelar
               </CButton>
               <CButton
