@@ -15,6 +15,11 @@ export const useInvoiceStore = create((set, get) => ({
   isModalOpen: false,
   loading: false,
   error: null,
+  
+  // Invoice detail modal state
+  selectedInvoice: null,
+  isInvoiceDetailOpen: false,
+  payingInvoiceId: null,
 
   // Actions
   setInvoices: (invoices) => set({ invoices }),
@@ -63,15 +68,116 @@ export const useInvoiceStore = create((set, get) => ({
     };
   }),
 
+  // Add function to check if invoice already exists
+  checkInvoiceDuplicate: (invoiceNumber, customerName, date, amount) => {
+    const { invoices } = get();
+    return invoices.some(invoice => 
+      invoice.invoiceNumber === invoiceNumber ||
+      (invoice.customerName === customerName && 
+       invoice.date === date && 
+       Math.abs(invoice.amount - parseFloat(amount)) < 0.01)
+    );
+  },
+
+  // Add function to import multiple invoices from CSV
+  importInvoicesFromCSV: (csvInvoices) => set((state) => {
+    const results = {
+      successful: [],
+      duplicates: [],
+      errors: []
+    };
+
+    csvInvoices.forEach((invoiceData, index) => {
+      try {
+        // Check for duplicates
+        const isDuplicate = state.invoices.some(existing => 
+          existing.invoiceNumber === invoiceData.invoiceNumber ||
+          (existing.customerName === invoiceData.customerName && 
+           existing.date === invoiceData.date && 
+           Math.abs(existing.amount - parseFloat(invoiceData.amount)) < 0.01)
+        );
+
+        if (isDuplicate) {
+          results.duplicates.push({
+            row: index + 2, // +2 because CSV starts at row 2 (after header)
+            data: invoiceData,
+            reason: 'Factura duplicada (mismo número o misma combinación cliente/fecha/monto)'
+          });
+        } else {
+          // Validate required fields
+          if (!invoiceData.invoiceNumber || !invoiceData.customerName || 
+              !invoiceData.date || !invoiceData.amount) {
+            results.errors.push({
+              row: index + 2,
+              data: invoiceData,
+              reason: 'Campos requeridos faltantes'
+            });
+          } else if (isNaN(parseFloat(invoiceData.amount)) || parseFloat(invoiceData.amount) <= 0) {
+            results.errors.push({
+              row: index + 2,
+              data: invoiceData,
+              reason: 'Monto inválido'
+            });
+          } else if (isNaN(new Date(invoiceData.date).getTime())) {
+            results.errors.push({
+              row: index + 2,
+              data: invoiceData,
+              reason: 'Fecha inválida'
+            });
+          } else {
+            // Valid invoice, add to successful list
+            const newInvoice = {
+              id: (Date.now() + index).toString(),
+              invoiceNumber: invoiceData.invoiceNumber,
+              customerName: invoiceData.customerName,
+              date: invoiceData.date,
+              amount: parseFloat(invoiceData.amount),
+              status: invoiceData.status || 'Pendiente'
+            };
+            results.successful.push(newInvoice);
+          }
+        }
+      } catch (error) {
+        results.errors.push({
+          row: index + 2,
+          data: invoiceData,
+          reason: `Error de procesamiento: ${error.message}`
+        });
+      }
+    });
+
+    // Add only successful invoices
+    const updatedInvoices = [...state.invoices, ...results.successful];
+    const filteredInvoices = filterInvoices(updatedInvoices, state.filters);
+
+    // Emit custom event for notifications with results
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('csv-import-completed', { 
+        detail: { results } 
+      }));
+    }, 0);
+
+    return {
+      invoices: updatedInvoices,
+      filteredInvoices
+    };
+  }),
+
   updateInvoice: (id, invoiceData) => set((state) => {
     const updatedInvoices = state.invoices.map(invoice =>
       invoice.id === id ? { ...invoice, ...invoiceData } : invoice
     );
     const filteredInvoices = filterInvoices(updatedInvoices, state.filters);
     
+    // Update selectedInvoice if it's the same invoice being updated
+    const updatedSelectedInvoice = state.selectedInvoice && state.selectedInvoice.id === id 
+      ? { ...state.selectedInvoice, ...invoiceData }
+      : state.selectedInvoice;
+    
     return {
       invoices: updatedInvoices,
-      filteredInvoices
+      filteredInvoices,
+      selectedInvoice: updatedSelectedInvoice
     };
   }),
 
@@ -87,6 +193,17 @@ export const useInvoiceStore = create((set, get) => ({
 
   openModal: () => set({ isModalOpen: true }),
   closeModal: () => set({ isModalOpen: false }),
+
+  // Invoice detail modal actions
+  openInvoiceDetail: (invoice) => set({ 
+    selectedInvoice: invoice, 
+    isInvoiceDetailOpen: true 
+  }),
+  closeInvoiceDetail: () => set({ 
+    selectedInvoice: null, 
+    isInvoiceDetailOpen: false 
+  }),
+  setPayingInvoiceId: (id) => set({ payingInvoiceId: id }),
 
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),

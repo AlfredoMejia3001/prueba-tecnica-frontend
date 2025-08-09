@@ -6,7 +6,6 @@ import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { useInvoiceStore } from '../stores/invoiceStore.js';
 import { InvoiceStatus } from '../types/invoice.js';
 import CloseButton from './CloseButton.jsx';
-import InvoiceSidebar from './InvoiceSidebar.jsx';
 
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -98,20 +97,22 @@ const ActionsCellRenderer = React.memo(({ data, onView, onPay, payingInvoiceId }
 
 // Main component with React.memo for performance
 const InvoiceTable = React.memo(() => {
-  const { filteredInvoices, updateInvoice } = useInvoiceStore();
+  const { 
+    filteredInvoices, 
+    updateInvoice, 
+    openInvoiceDetail, 
+    setPayingInvoiceId, 
+    payingInvoiceId 
+  } = useInvoiceStore();
   const [isMobile, setIsMobile] = useState(false);
-  const [modalInvoice, setModalInvoice] = useState(null);
-  const [showModal, setShowModal] = useState(false);
-  const [payingInvoiceId, setPayingInvoiceId] = useState(null);
   
   // Grid API reference for optimizations
   const gridRef = useRef(null);
 
   // Optimized event handlers with useCallback
   const handleView = useCallback((invoice) => {
-    setModalInvoice(invoice);
-    setShowModal(true);
-  }, []);
+    openInvoiceDetail(invoice);
+  }, [openInvoiceDetail]);
 
   const handlePay = useCallback((invoice) => {
     setPayingInvoiceId(invoice.id);
@@ -127,12 +128,7 @@ const InvoiceTable = React.memo(() => {
       });
       window.dispatchEvent(event);
     }, 600);
-  }, [updateInvoice]);
-
-  const closeModal = useCallback(() => {
-    setShowModal(false);
-    setModalInvoice(null);
-  }, []);
+  }, [updateInvoice, setPayingInvoiceId]);
 
   // Optimized mobile detection with debouncing
   useEffect(() => {
@@ -457,14 +453,6 @@ const InvoiceTable = React.memo(() => {
         </div>
       )}
 
-      {/* Sidebar para vista previa de factura */}
-      <InvoiceSidebar
-        invoice={modalInvoice}
-        isOpen={showModal}
-        onClose={closeModal}
-        onPay={handlePay}
-        payingInvoiceId={payingInvoiceId}
-      />
     </div>
   );
 });

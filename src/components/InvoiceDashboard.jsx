@@ -12,14 +12,26 @@ import {
 import { cilPlus, cilCloudDownload, cilDescription } from '@coreui/icons';
 import CIcon from '@coreui/icons-react';
 import { useInvoiceStore, useInvoiceStats } from '../stores/invoiceStore.js';
+import { InvoiceStatus } from '../types/invoice.js';
 import InvoiceTable from './InvoiceTable.jsx';
 import InvoiceFilters from './InvoiceFilters.jsx';
 import InvoiceModal from './InvoiceModal.jsx';
+import InvoiceSidebar from './InvoiceSidebar.jsx';
 import GlobalSearch from './GlobalSearch.jsx';
 import { useToast } from './NotificationToast.jsx';
 
 const InvoiceDashboard = () => {
-  const { openModal, initialize } = useInvoiceStore();
+  const { 
+    openModal, 
+    initialize, 
+    importInvoicesFromCSV,
+    selectedInvoice,
+    isInvoiceDetailOpen,
+    closeInvoiceDetail,
+    updateInvoice,
+    setPayingInvoiceId,
+    payingInvoiceId
+  } = useInvoiceStore();
   const stats = useInvoiceStats();
   const toast = useToast();
   const [statsAnimation, setStatsAnimation] = useState('');
@@ -41,13 +53,63 @@ const InvoiceDashboard = () => {
         triggerStatsAnimation();
       }
     };
+
+    const handleCSVImportCompleted = (event) => {
+      const { results } = event.detail;
+      const { successful, duplicates, errors } = results;
+
+      // Show summary notification
+      if (successful.length > 0) {
+        toast.success(`✅ ${successful.length} facturas importadas exitosamente`);
+        triggerStatsAnimation();
+      }
+
+      if (duplicates.length > 0) {
+        toast.warning(`⚠️ ${duplicates.length} facturas duplicadas omitidas`);
+      }
+
+      if (errors.length > 0) {
+        toast.error(`❌ ${errors.length} facturas con errores no se pudieron importar`);
+      }
+
+      // Show detailed results if there are issues
+      if (duplicates.length > 0 || errors.length > 0) {
+        setTimeout(() => {
+          let detailMessage = '';
+          
+          if (duplicates.length > 0) {
+            detailMessage += `\n📋 Facturas duplicadas (${duplicates.length}):\n`;
+            duplicates.slice(0, 3).forEach(dup => {
+              detailMessage += `• Fila ${dup.row}: ${dup.data.invoiceNumber || dup.data.customerName}\n`;
+            });
+            if (duplicates.length > 3) {
+              detailMessage += `• ... y ${duplicates.length - 3} más\n`;
+            }
+          }
+
+          if (errors.length > 0) {
+            detailMessage += `\n❌ Errores encontrados (${errors.length}):\n`;
+            errors.slice(0, 3).forEach(err => {
+              detailMessage += `• Fila ${err.row}: ${err.reason}\n`;
+            });
+            if (errors.length > 3) {
+              detailMessage += `• ... y ${errors.length - 3} más\n`;
+            }
+          }
+
+          toast.info(`📊 Resumen de importación CSV:${detailMessage}`, { autoClose: 10000 });
+        }, 1000);
+      }
+    };
     
     window.addEventListener('invoice-added', handleInvoiceAdded);
     window.addEventListener('invoice-updated', handleInvoiceUpdated);
+    window.addEventListener('csv-import-completed', handleCSVImportCompleted);
     
     return () => {
       window.removeEventListener('invoice-added', handleInvoiceAdded);
       window.removeEventListener('invoice-updated', handleInvoiceUpdated);
+      window.removeEventListener('csv-import-completed', handleCSVImportCompleted);
     };
   }, []); // Empty dependencies to run only once
 
@@ -64,6 +126,23 @@ const InvoiceDashboard = () => {
       setTimeout(() => button.classList.remove('animate-pulse'), 300);
     }
     openModal();
+  };
+
+  const handlePay = (invoice) => {
+    setPayingInvoiceId(invoice.id);
+    
+    // Add visual feedback
+    setTimeout(() => {
+      updateInvoice(invoice.id, { status: InvoiceStatus.PAID });
+      setPayingInvoiceId(null);
+      
+  
+      // Trigger stats update animation
+      const event = new CustomEvent('invoice-updated', { 
+        detail: { type: 'payment', invoice } 
+      });
+      window.dispatchEvent(event);
+    }, 600);
   };
 
   const handleExportCSV = () => {
@@ -119,19 +198,88 @@ const InvoiceDashboard = () => {
           try {
             const csv = event.target.result;
             const lines = csv.split('\n').filter(line => line.trim());
-            const headers = lines[0].split(',');
             
             if (lines.length <= 1) {
               toast.warning('El archivo CSV está vacío');
               return;
             }
             
-            // Simple CSV parsing (for demonstration)
-            console.log('CSV imported successfully:', { headers, rows: lines.length - 1 });
-            toast.success(`CSV importado exitosamente!\n${lines.length - 1} filas procesadas`);
+            // Parse CSV headers
+            const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+            
+            // Expected headers (flexible matching)
+            const headerMap = {
+              invoiceNumber: ['numero', 'numero de factura', 'invoice number', 'factura', 'invoicenumber'],
+              customerName: ['cliente', 'customer', 'customer name', 'customername', 'nombre cliente'],
+              date: ['fecha', 'date', 'fecha factura'],
+              amount: ['monto', 'amount', 'total', 'valor'],
+              status: ['estado', 'status', 'state']
+            };
+
+            // Map CSV headers to our fields
+            const fieldMapping = {};
+            Object.keys(headerMap).forEach(field => {
+              const headerIndex = headers.findIndex(header => 
+                headerMap[field].some(variant => 
+                  header.toLowerCase().includes(variant.toLowerCase())
+                )
+              );
+              if (headerIndex !== -1) {
+                fieldMapping[field] = headerIndex;
+              }
+            });
+
+            // Check if we have required fields
+            const requiredFields = ['invoiceNumber', 'customerName', 'date', 'amount'];
+            const missingFields = requiredFields.filter(field => fieldMapping[field] === undefined);
+            
+            if (missingFields.length > 0) {
+              toast.error(`Faltan columnas requeridas en el CSV: ${missingFields.join(', ')}`);
+              return;
+            }
+
+            // Parse data rows
+            const csvInvoices = [];
+            for (let i = 1; i < lines.length; i++) {
+              const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+              
+              if (values.length < Math.max(...Object.values(fieldMapping)) + 1) {
+                continue; // Skip incomplete rows
+              }
+
+              const invoiceData = {
+                invoiceNumber: values[fieldMapping.invoiceNumber] || '',
+                customerName: values[fieldMapping.customerName] || '',
+                date: values[fieldMapping.date] || '',
+                amount: values[fieldMapping.amount] || '',
+                status: values[fieldMapping.status] || 'Pendiente'
+              };
+
+              // Normalize status
+              const statusLower = invoiceData.status.toLowerCase();
+              if (statusLower.includes('pagad') || statusLower.includes('paid')) {
+                invoiceData.status = 'Pagada';
+              } else {
+                invoiceData.status = 'Pendiente';
+              }
+
+              csvInvoices.push(invoiceData);
+            }
+
+            if (csvInvoices.length === 0) {
+              toast.warning('No se encontraron datos válidos en el CSV');
+              return;
+            }
+
+            // Show loading notification
+            toast.info(`🔄 Procesando ${csvInvoices.length} facturas del CSV...`);
+
+            // Import invoices with validation
+            importInvoicesFromCSV(csvInvoices);
+            
           } catch (error) {
             console.error('Error parsing CSV:', error);
-            toast.error('Error al procesar el archivo CSV');
+            toast.error(`Error al procesar el archivo CSV: ${error.message}`);
           }
         };
         reader.readAsText(file);
@@ -312,6 +460,15 @@ const InvoiceDashboard = () => {
 
       {/* Modal for Adding/Editing Invoices */}
       <InvoiceModal />
+      
+      {/* Invoice Detail Modal - Renders over entire dashboard */}
+      <InvoiceSidebar
+        invoice={selectedInvoice}
+        isOpen={isInvoiceDetailOpen}
+        onClose={closeInvoiceDetail}
+        onPay={handlePay}
+        payingInvoiceId={payingInvoiceId}
+      />
       
       {/* Toast Notifications */}
       <toast.ToastContainer />
