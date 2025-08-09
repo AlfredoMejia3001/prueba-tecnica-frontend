@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { InvoiceStatus } from '../types/invoice.js';
 import CloseButton from './CloseButton.jsx';
 
-const InvoiceSidebar = ({ invoice, isOpen, onClose, onPay, payingInvoiceId }) => {
+const InvoicePreview = ({ invoice, isOpen, onClose, onPay, payingInvoiceId }) => {
   // Handle ESC key press
   useEffect(() => {
     const handleEscKey = (event) => {
@@ -235,4 +235,4 @@ const InvoiceSidebar = ({ invoice, isOpen, onClose, onPay, payingInvoiceId }) =>
   );
 };
 
-export default InvoiceSidebar;
+export default InvoicePreview;

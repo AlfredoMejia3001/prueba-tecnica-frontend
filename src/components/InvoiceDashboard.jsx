@@ -16,7 +16,7 @@ import { InvoiceStatus } from '../types/invoice.js';
 import InvoiceTable from './InvoiceTable.jsx';
 import InvoiceFilters from './InvoiceFilters.jsx';
 import InvoiceModal from './InvoiceModal.jsx';
-import InvoiceSidebar from './InvoiceSidebar.jsx';
+import InvoicePreview from './InvoicePreview.jsx';
 import GlobalSearch from './GlobalSearch.jsx';
 import { useToast } from './NotificationToast.jsx';
 
@@ -462,7 +462,7 @@ const InvoiceDashboard = () => {
       <InvoiceModal />
       
       {/* Invoice Detail Modal - Renders over entire dashboard */}
-      <InvoiceSidebar
+      <InvoicePreview
         invoice={selectedInvoice}
         isOpen={isInvoiceDetailOpen}
         onClose={closeInvoiceDetail}
