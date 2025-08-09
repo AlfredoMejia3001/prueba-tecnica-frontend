@@ -1,6 +1,6 @@
 import React from 'react';
 import { CButton, CFormInput, CFormSelect, CButtonGroup } from '@coreui/react';
-import { cilFilterX, cilSearch } from '@coreui/icons';
+import { cilFilterX } from '@coreui/icons';
 import CIcon from '@coreui/icons-react';
 import { useInvoiceStore } from '../stores/invoiceStore.js';
 import { InvoiceStatus } from '../types/invoice.js';

@@ -14,7 +14,7 @@ import {
   CAlert,
   CSpinner
 } from '@coreui/react';
-import { cilSave, cilX } from '@coreui/icons';
+import { cilSave } from '@coreui/icons';
 import CIcon from '@coreui/icons-react';
 import { useInvoiceStore } from '../stores/invoiceStore.js';
 import { InvoiceStatus } from '../types/invoice.js';
@@ -39,7 +39,7 @@ const validationSchema = Yup.object({
 });
 
 const InvoiceModal = () => {
-  const { isModalOpen, closeModal, addInvoice, loading } = useInvoiceStore();
+  const { isModalOpen, closeModal, addInvoice } = useInvoiceStore();
 
   // Initial form values
   const initialValues = {
@@ -88,8 +88,7 @@ const InvoiceModal = () => {
           touched,
           handleChange,
           handleBlur,
-          isSubmitting,
-          setFieldValue
+          isSubmitting
         }) => (
           <Form>
             <CModalHeader>
