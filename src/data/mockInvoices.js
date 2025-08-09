@@ -1,68 +1,68 @@
 import { InvoiceStatus } from '../types/invoice.js';
 
-// Mock invoice data
+// Mock invoice data - Updated with recent dates (August 2025)
 export const mockInvoices = [
   {
     id: '1',
-    invoiceNumber: 'INV-2024-001',
+    invoiceNumber: 'INV-2025-001',
     customerName: 'Empresa ABC S.A.',
-    date: '2024-01-15',
+    date: '2025-08-01',
     amount: 1250.50,
     status: InvoiceStatus.PAID
   },
   {
     id: '2',
-    invoiceNumber: 'INV-2024-002',
+    invoiceNumber: 'INV-2025-002',
     customerName: 'Comercial XYZ Ltda.',
-    date: '2024-01-18',
+    date: '2025-08-02',
     amount: 2890.00,
     status: InvoiceStatus.PENDING
   },
   {
     id: '3',
-    invoiceNumber: 'INV-2024-003',
+    invoiceNumber: 'INV-2025-003',
     customerName: 'Servicios DEF Corp.',
-    date: '2024-01-20',
+    date: '2025-08-03',
     amount: 750.25,
     status: InvoiceStatus.PAID
   },
   {
     id: '4',
-    invoiceNumber: 'INV-2024-004',
+    invoiceNumber: 'INV-2025-004',
     customerName: 'Industrias GHI S.A.S.',
-    date: '2024-01-22',
+    date: '2025-08-04',
     amount: 4200.00,
     status: InvoiceStatus.PENDING
   },
   {
     id: '5',
-    invoiceNumber: 'INV-2024-005',
+    invoiceNumber: 'INV-2025-005',
     customerName: 'Distribuciones JKL',
-    date: '2024-01-25',
+    date: '2025-08-05',
     amount: 1800.75,
     status: InvoiceStatus.PAID
   },
   {
     id: '6',
-    invoiceNumber: 'INV-2024-006',
+    invoiceNumber: 'INV-2025-006',
     customerName: 'Consultores MNO',
-    date: '2024-01-28',
+    date: '2025-08-06',
     amount: 950.00,
     status: InvoiceStatus.PENDING
   },
   {
     id: '7',
-    invoiceNumber: 'INV-2024-007',
+    invoiceNumber: 'INV-2025-007',
     customerName: 'Tecnología PQR',
-    date: '2024-02-01',
+    date: '2025-08-07',
     amount: 3500.25,
     status: InvoiceStatus.PAID
   },
   {
     id: '8',
-    invoiceNumber: 'INV-2024-008',
+    invoiceNumber: 'INV-2025-008',
     customerName: 'Logística STU',
-    date: '2024-02-03',
+    date: '2025-08-08',
     amount: 2150.00,
     status: InvoiceStatus.PENDING
   }
